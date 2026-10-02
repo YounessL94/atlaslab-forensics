@@ -30,6 +30,11 @@ export class ProviderError extends Error {}
 // AI text detection is only available as a V2 Enterprise project; V3 self-serve covers images/video/audio.
 const HIVE_V2_SYNC_URL = 'https://api.thehive.ai/api/v2/task/sync';
 const HIVE_V3_IMAGE_URL = 'https://api.thehive.ai/api/v3/hive/ai-generated-and-deepfake-content-detection';
+// Self-serve AI text detection (EN, FR and other languages). Used when no Hive Enterprise text key is configured.
+const WINSTON_TEXT_URL = 'https://api.gowinston.ai/v2/ai-content-detection';
+
+/** True when a text-detection provider is configured (evaluated server-side only). */
+export const textDetectionAvailable = () => !!(process.env.HIVE_TEXT_API_KEY || process.env.WINSTON_API_KEY);
 
 // Source-head classes that are not a generator name.
 const NON_SOURCE_CLASSES = new Set(['ai_generated', 'not_ai_generated', 'none', 'inconclusive', 'inconclusive_video', 'deepfake']);
@@ -90,6 +95,20 @@ async function callHiveV3Image(apiKey: string, buf: Buffer, mimeType: string): P
   return { output };
 }
 
+async function callWinston(apiKey: string, text: string): Promise<any> {
+  const res = await fetch(WINSTON_TEXT_URL, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${apiKey}`, accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify({ text, language: 'auto', sentences: true }),
+    signal: AbortSignal.timeout(25000)
+  });
+  if (!res.ok) {
+    const detail = (await res.text().catch(() => '')).slice(0, 200);
+    throw new ProviderError(`Winston HTTP ${res.status} ${detail}`);
+  }
+  return res.json();
+}
+
 function pct(x: number): number {
   // Never display 0% or 100%: a classifier score is not certainty.
   return Math.min(99.9, Math.max(0.1, Math.round(x * 1000) / 10));
@@ -148,6 +167,40 @@ export function parseHiveText(response: any, isFr: boolean): { score: number; si
   return { score: pct(overall), signals, segmentSpread: spread };
 }
 
+// Winston returns a *human* score 0-100 (higher = more human); we convert to an AI likelihood.
+export function parseWinston(data: any, isFr: boolean): { score: number; signals: Signal[]; segmentSpread: number } {
+  if (typeof data?.score !== 'number') throw new ProviderError('Winston response missing score');
+  const ai = 1 - data.score / 100;
+  const signals: Signal[] = [{ label: isFr ? 'Score global du texte' : 'Aggregate text score', value: pct(ai) }];
+
+  const sentences: number[] = (Array.isArray(data.sentences) ? data.sentences : [])
+    .map((s: any) => s?.score)
+    .filter((x: unknown): x is number => typeof x === 'number');
+  let segmentSpread = 0;
+  if (sentences.length >= 3) {
+    const flagged = sentences.filter((h) => h < 50).length;
+    signals.push({
+      label: isFr ? 'Phrases au profil IA' : 'Sentences with AI-like patterns',
+      status: `${flagged} / ${sentences.length}`
+    });
+    // A substantial share of both AI-like and human-like sentences suggests mixed or edited text.
+    const share = flagged / sentences.length;
+    if (sentences.length >= 4 && share >= 0.25 && share <= 0.75) segmentSpread = 0.6;
+  }
+  const attack = data?.attack_detected;
+  if (attack?.zero_width_space || attack?.homoglyph_attack) {
+    signals.push({
+      label: isFr ? 'Caractères invisibles ou homoglyphes' : 'Hidden characters or homoglyphs',
+      status: isFr ? 'Détectés' : 'Detected'
+    });
+  }
+  if (typeof data?.language === 'string') {
+    signals.push({ label: isFr ? 'Langue détectée' : 'Detected language', status: data.language.toUpperCase() });
+  }
+  return { score: pct(ai), signals, segmentSpread };
+}
+
+// Name kept for compatibility: routes image detection to Hive and text detection to Hive (Enterprise) or Winston.
 export async function analyzeWithHive(
   modality: 'image' | 'text',
   payload: { text?: string; fileBuffer?: Buffer; fileName?: string; mimeType?: string },
@@ -159,8 +212,9 @@ export async function analyzeWithHive(
 
   const v2Key = modality === 'text' ? process.env.HIVE_TEXT_API_KEY : process.env.HIVE_IMAGE_API_KEY;
   const v3Key = modality === 'image' ? process.env.HIVE_API_KEY : undefined;
+  const winstonKey = modality === 'text' ? process.env.WINSTON_API_KEY : undefined;
 
-  if (!v2Key && !v3Key) {
+  if (!v2Key && !v3Key && !winstonKey) {
     if (process.env.NODE_ENV !== 'production' && process.env.HIVE_MOCK === '1') {
       return devMock(modality, payload, locale, requestId);
     }
@@ -169,9 +223,16 @@ export async function analyzeWithHive(
 
   if (modality === 'text') {
     const text = payload.text || '';
-    const response = await callHiveV2(v2Key!, JSON.stringify({ text_data: text }), true);
-    const { score, signals, segmentSpread } = parseHiveText(response, isFr);
-    return normalizeVerdict({ modality, score, signals, locale, requestId, latencyMs: Date.now() - startTime, textLength: text.length, segmentSpread });
+    if (v2Key) {
+      const response = await callHiveV2(v2Key, JSON.stringify({ text_data: text }), true);
+      const { score, signals, segmentSpread } = parseHiveText(response, isFr);
+      return normalizeVerdict({ modality, score, signals, locale, requestId, latencyMs: Date.now() - startTime, textLength: text.length, segmentSpread });
+    }
+    const { score, signals, segmentSpread } = parseWinston(await callWinston(winstonKey!, text), isFr);
+    return normalizeVerdict({
+      modality, score, signals, locale, requestId, latencyMs: Date.now() - startTime,
+      textLength: text.length, segmentSpread, provider: 'Winston AI text detection'
+    });
   }
 
   let response: any;
@@ -219,7 +280,7 @@ export function normalizeVerdict(args: {
 
   const notes: string[] = [];
   if (modality === 'text' && textLength !== undefined) {
-    if (textLength < 500) {
+    if (textLength < 600) {
       reliability = 'LOW';
       if (decision === 'AI_LIKELY' && score < THRESHOLDS.AI_LIKELY_HIGH) decision = 'INDETERMINATE';
       notes.push(isFr ? 'Texte court : la fiabilité est réduite.' : 'Short text: reliability is reduced.');

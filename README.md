@@ -18,7 +18,7 @@ Stack: Next.js 16 (App Router, static pages) · Hive AI-generated content detect
 See `.env.example`. In production the API **fails closed** (HTTP 503) if Hive key, Turnstile secret, Upstash or `RATE_LIMIT_SALT` are missing — no fabricated results.
 `NEXT_PUBLIC_*` values are inlined at build time: redeploy after changing them.
 
-Hive: `HIVE_API_KEY` is a self-serve V3 key (thehive.ai → Service API Keys) and powers the image detector (default quota ~100 req/day → `DAILY_GLOBAL_LIMIT=90`). AI **text** detection is only offered as a V2 Enterprise project → `HIVE_TEXT_API_KEY`; without it the text detector returns an honest "not available yet" message.
+Hive: `HIVE_API_KEY` is a self-serve V3 key (thehive.ai → Service API Keys) and powers the image detector (default quota ~100 req/day → `DAILY_GLOBAL_LIMIT=90`). AI **text** detection is only offered as a V2 Enterprise project → `HIVE_TEXT_API_KEY`; Without it, `WINSTON_API_KEY` (Winston AI, self-serve, EN/FR, 1 credit per word, prepaid) powers the text detector; with neither, the text detector shows an honest "not available yet" notice. Text has its own daily cap (`DAILY_TEXT_GLOBAL_LIMIT`, default 150).
 
 ## Local
 

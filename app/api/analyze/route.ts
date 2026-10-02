@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyTurnstileToken, hashIp, getClientIp, checkRateLimit, incrementMetric, ConfigError } from '@/lib/security';
-import { analyzeWithHive, ProviderError } from '@/lib/analysis';
+import { analyzeWithHive, ProviderError, textDetectionAvailable } from '@/lib/analysis';
 import { THRESHOLDS } from '@/lib/config';
 
 export const runtime = 'nodejs';
@@ -68,8 +68,8 @@ export async function POST(req: NextRequest) {
     const modality = form.get('modality');
     if (modality !== 'image' && modality !== 'text') return json({ error: m.bad }, 400);
 
-    // Text detection needs a Hive V2 Enterprise project key; fail fast with an honest message.
-    if (modality === 'text' && !process.env.HIVE_TEXT_API_KEY && process.env.HIVE_MOCK !== '1') {
+    // Text detection needs a configured text provider; fail fast with an honest message.
+    if (modality === 'text' && !textDetectionAvailable() && process.env.HIVE_MOCK !== '1') {
       await incrementMetric('err_text_unavailable');
       return json({ error: m.textOff }, 503);
     }
@@ -107,7 +107,10 @@ export async function POST(req: NextRequest) {
       return json({ error: perIp.rule === 'scan_day' ? m.daily : m.rate }, 429);
     }
     const global = await checkRateLimit('global', [
-      { name: 'scan_global_day', windowSec: 86400, max: Number(process.env.DAILY_GLOBAL_LIMIT || 90) }
+      // Separate daily budgets per provider (Hive V3 image quota ~100/day; text is billed per word).
+      modality === 'image'
+        ? { name: 'scan_global_day', windowSec: 86400, max: Number(process.env.DAILY_GLOBAL_LIMIT || 90) }
+        : { name: 'scan_text_global_day', windowSec: 86400, max: Number(process.env.DAILY_TEXT_GLOBAL_LIMIT || 150) }
     ]);
     if (!global.allowed) {
       await incrementMetric('err_global_cap');
@@ -128,7 +131,7 @@ export async function POST(req: NextRequest) {
     if (err instanceof ConfigError) console.error('Config error:', err.message);
     else if (err instanceof ProviderError) console.error('Provider error:', err.message);
     else console.error('Analyze error:', (err as Error)?.message);
-    const providerBusy = err instanceof ProviderError && / 429 /.test(err.message);
+    const providerBusy = err instanceof ProviderError && / (402|429) /.test(err.message);
     await incrementMetric(err instanceof ConfigError ? 'err_config' : providerBusy ? 'err_provider_quota' : 'err_provider');
     return json({ error: providerBusy ? m.busy : m.unavailable }, 503);
   }

@@ -101,7 +101,7 @@ export const ROUTE_MAP: Record<string, RouteContent> = {
     title: 'AI Text Detector — Check Text for AI Signals | Atlas Forensics',
     metaDescription: 'Paste text to inspect signals associated with AI-generated writing. Get an AI likelihood estimate and honest reliability levels.',
     h1: 'AI Text Detector',
-    intro: 'Paste text (250 to 20,000 characters) to analyze linguistic predictability and structural coherence.',
+    intro: 'Paste text (300 to 20,000 characters) to analyze linguistic predictability and structural coherence.',
     toolType: 'text',
     sections: [
       {
@@ -114,7 +114,7 @@ export const ROUTE_MAP: Record<string, RouteContent> = {
     ],
     faq: [
       { q: 'Can AI text detectors produce false positives?', a: 'Yes, particularly on short texts or technical documentation.' },
-      { q: 'How much text should I submit?', a: 'A minimum of 250 characters is required. 1,500+ characters produces the most reliable analysis.' },
+      { q: 'How much text should I submit?', a: 'A minimum of 300 characters is required. 1,500+ characters produces the most reliable analysis.' },
       { q: 'Should I use this to sanction a student or employee?', a: 'No. A detector score alone is never sufficient evidence for a disciplinary decision.' }
     ]
   },
@@ -196,7 +196,7 @@ export const ROUTE_MAP: Record<string, RouteContent> = {
       {
         h2: 'Content you analyze',
         p: [
-          'Images and text submitted to the AI detectors are transmitted over HTTPS to our detection provider (Hive) to compute the result, then discarded by our application. We do not store submitted content in our own storage and do not use it for training.',
+          'Images and text submitted to the AI detectors are transmitted over HTTPS to our detection providers (Hive for images, Winston AI for text) to compute the result, then discarded by our application. We do not store submitted content in our own storage and do not use it for training.',
           'Content Credentials (C2PA) inspection runs entirely in your browser; the file is not uploaded for that check.'
         ]
       },
@@ -330,7 +330,7 @@ export const ROUTE_MAP: Record<string, RouteContent> = {
     title: 'Détecteur IA texte gratuit | Atlas Forensics',
     metaDescription: 'Collez un texte pour analyser les signaux associés à la rédaction par IA.',
     h1: 'Détecteur de Texte IA',
-    intro: 'Collez un texte (250 à 20 000 caractères) pour analyser la prédictibilité linguistique.',
+    intro: 'Collez un texte (300 à 20 000 caractères) pour analyser la prédictibilité linguistique.',
     toolType: 'text',
     sections: [
       {
@@ -343,7 +343,7 @@ export const ROUTE_MAP: Record<string, RouteContent> = {
     ],
     faq: [
       { q: 'Un détecteur de texte IA peut-il produire des faux positifs ?', a: 'Oui, surtout sur des textes courts ou techniques.' },
-      { q: 'Quelle longueur de texte soumettre ?', a: '250 caractères minimum ; au-delà de 1 500 caractères l’analyse est plus fiable.' }
+      { q: 'Quelle longueur de texte soumettre ?', a: '300 caractères minimum ; au-delà de 1 500 caractères l’analyse est plus fiable.' }
     ]
   },
   'fr/verificateur-content-credentials': {
@@ -417,7 +417,7 @@ export const ROUTE_MAP: Record<string, RouteContent> = {
       {
         h2: 'Contenus analysés',
         p: [
-          'Les images et textes soumis aux détecteurs sont transmis en HTTPS à notre prestataire de détection (Hive) pour calculer le résultat, puis abandonnés par notre application. Nous ne les conservons pas et ne les utilisons pas pour de l’entraînement.',
+          'Les images et textes soumis aux détecteurs sont transmis en HTTPS à nos prestataires de détection (Hive pour les images, Winston AI pour les textes) pour calculer le résultat, puis abandonnés par notre application. Nous ne les conservons pas et ne les utilisons pas pour de l’entraînement.',
           'L’inspection des Content Credentials (C2PA) s’exécute entièrement dans votre navigateur.'
         ]
       },

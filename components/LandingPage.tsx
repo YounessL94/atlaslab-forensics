@@ -3,6 +3,7 @@ import Detector from './Detector';
 import Waitlist from './Waitlist';
 import { RouteContent, pathFor } from '@/lib/content';
 import { jsonLd } from '@/lib/seo';
+import { textDetectionAvailable } from '@/lib/analysis';
 
 export default function LandingPage({ route }: { route: RouteContent }) {
   const isFr = route.locale === 'fr';
@@ -37,7 +38,7 @@ export default function LandingPage({ route }: { route: RouteContent }) {
         <Detector
           locale={route.locale}
           initialModality={route.toolType === 'hub' ? 'image' : (route.toolType as 'image' | 'text' | 'c2pa')}
-          textAvailable={!!process.env.HIVE_TEXT_API_KEY}
+          textAvailable={textDetectionAvailable()}
         />
       )}
 

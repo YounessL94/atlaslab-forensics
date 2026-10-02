@@ -14,7 +14,7 @@ interface Props {
   textAvailable?: boolean;
 }
 
-const TEXT_MIN = 250;
+const TEXT_MIN = 300;
 const TEXT_MAX = 20000;
 const IMAGE_MAX = 4 * 1024 * 1024;
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -28,8 +28,8 @@ const T = {
     badType: 'Unsupported format. Use JPG, PNG or WEBP.',
     tooBig: 'This file is larger than the 4 MB limit. For forensic consistency, we do not silently recompress uploads.',
     captcha: 'Please complete the security check first.',
-    placeholder: 'Paste text here to analyze (250 to 20,000 characters)...',
-    min: 'Min. 250 characters',
+    placeholder: 'Paste text here to analyze (300 to 20,000 characters)...',
+    min: 'Min. 300 characters',
     drop: 'Drag & drop an image here or click to browse',
     c2paLocal: 'Checked locally in your browser — not uploaded.',
     analyze: 'Analyze content',
@@ -70,8 +70,8 @@ const T = {
     badType: 'Format non pris en charge. Utilisez JPG, PNG ou WEBP.',
     tooBig: 'Ce fichier dépasse la limite d’analyse de 4 Mo. Pour préserver la cohérence, nous ne recompressons pas les fichiers.',
     captcha: 'Veuillez d’abord valider le contrôle de sécurité.',
-    placeholder: 'Collez ici votre texte à analyser (250 à 20 000 caractères)...',
-    min: 'Min. 250 caractères',
+    placeholder: 'Collez ici votre texte à analyser (300 à 20 000 caractères)...',
+    min: 'Min. 300 caractères',
     drop: 'Glissez-déposez une image ici ou cliquez pour parcourir',
     c2paLocal: 'Vérifié localement dans votre navigateur — aucun envoi.',
     analyze: 'Lancer l’analyse',
