@@ -213,7 +213,8 @@ export function normalizeVerdict(args: {
     reliability = 'LOW';
   } else {
     decision = 'NO_SUFFICIENT_AI_SIGNAL';
-    reliability = score <= 3 ? 'HIGH' : 'MEDIUM';
+    // Absence of a signal is never strong evidence of human origin: cap at MEDIUM.
+    reliability = 'MEDIUM';
   }
 
   const notes: string[] = [];

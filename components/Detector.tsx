@@ -10,6 +10,8 @@ type Modality = 'image' | 'text' | 'c2pa';
 interface Props {
   initialModality?: Modality;
   locale: 'en' | 'fr';
+  /** Evaluated at build time on the server (Hive text detection needs an Enterprise key). */
+  textAvailable?: boolean;
 }
 
 const TEXT_MIN = 250;
@@ -57,7 +59,8 @@ const T = {
     generator: 'Created with',
     signedAt: 'Signed at',
     stateHelp: { Valid: 'signature and hashes intact', Trusted: 'signed by a trusted certificate', Invalid: 'file modified after signing or invalid signature' },
-    ref: 'Reference'
+    ref: 'Reference',
+    textOff: 'The AI text detector is not available yet. The image detector and the C2PA checker work now.'
   },
   fr: {
     tabs: { image: 'Image', text: 'Texte', c2pa: 'C2PA' },
@@ -98,7 +101,8 @@ const T = {
     generator: 'Créé avec',
     signedAt: 'Signé le',
     stateHelp: { Valid: 'signature et empreintes intactes', Trusted: 'signé par un certificat de confiance', Invalid: 'fichier modifié après signature ou signature invalide' },
-    ref: 'Référence'
+    ref: 'Référence',
+    textOff: 'Le détecteur de texte IA n’est pas encore disponible. Le détecteur d’image et le vérificateur C2PA fonctionnent déjà.'
   }
 };
 
@@ -146,7 +150,7 @@ function Provenance({ p, t }: { p: ProvenanceResult; t: (typeof T)['en'] }) {
   );
 }
 
-export default function Detector({ initialModality = 'image', locale }: Props) {
+export default function Detector({ initialModality = 'image', locale, textAvailable = true }: Props) {
   const t = T[locale];
   const [modality, setModality] = useState<Modality>(initialModality);
   const [text, setText] = useState('');
@@ -260,6 +264,11 @@ export default function Detector({ initialModality = 'image', locale }: Props) {
         ))}
       </div>
 
+      {modality === 'text' && !textAvailable && (
+        <div className="notice" role="status">
+          {t.textOff}
+        </div>
+      )}
       {modality === 'text' ? (
         <div>
           <textarea
@@ -320,7 +329,7 @@ export default function Detector({ initialModality = 'image', locale }: Props) {
         </div>
       )}
 
-      <button className="btn" type="button" onClick={handleAnalyze} disabled={loading} aria-busy={loading}>
+      <button className="btn" type="button" onClick={handleAnalyze} disabled={loading || (modality === 'text' && !textAvailable)} aria-busy={loading}>
         {loading ? (
           <>
             <span className="spinner" aria-hidden="true" /> {t.analyzing}

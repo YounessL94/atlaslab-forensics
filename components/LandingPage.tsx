@@ -37,6 +37,7 @@ export default function LandingPage({ route }: { route: RouteContent }) {
         <Detector
           locale={route.locale}
           initialModality={route.toolType === 'hub' ? 'image' : (route.toolType as 'image' | 'text' | 'c2pa')}
+          textAvailable={!!process.env.HIVE_TEXT_API_KEY}
         />
       )}
 
