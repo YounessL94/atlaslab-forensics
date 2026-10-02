@@ -48,8 +48,9 @@ export async function verifyTurnstileToken(token: string | null, ip?: string): P
 }
 
 function redisEnv(): { url: string; token: string } | null {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  // Vercel Marketplace Upstash integration injects KV_REST_API_*.
+  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
   if (!url || !token) {
     if (isProd) throw new ConfigError('Upstash Redis env missing');
     return null;
