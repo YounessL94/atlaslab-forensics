@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+.pnp*
+
+# build
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# env / secrets
+.env
+.env*
+!.env.example
+*.pem
+
+# vercel
+.vercel/
+
+# misc
+.DS_Store
+Thumbs.db
+npm-debug.log*
+*.log
+*.zip
+.playwright-mcp/
