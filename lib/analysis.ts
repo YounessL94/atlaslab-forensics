@@ -26,16 +26,22 @@ export interface AnalysisResult {
 
 export class ProviderError extends Error {}
 
-const HIVE_SYNC_URL = 'https://api.thehive.ai/api/v2/task/sync';
+// V2 = Enterprise project keys (one per model). V3 = self-serve key (one key for all "Playground Available" models).
+// AI text detection is only available as a V2 Enterprise project; V3 self-serve covers images/video/audio.
+const HIVE_V2_SYNC_URL = 'https://api.thehive.ai/api/v2/task/sync';
+const HIVE_V3_IMAGE_URL = 'https://api.thehive.ai/api/v3/hive/ai-generated-and-deepfake-content-detection';
 
 // Source-head classes that are not a generator name.
 const NON_SOURCE_CLASSES = new Set(['ai_generated', 'not_ai_generated', 'none', 'inconclusive', 'inconclusive_video', 'deepfake']);
 
 interface HiveClass {
   class?: string;
-  score?: number;
+  score?: number; // V2
+  value?: number; // V3
   [k: string]: unknown;
 }
+
+const classScore = (c?: HiveClass) => (typeof c?.score === 'number' ? c.score : typeof c?.value === 'number' ? c.value : undefined);
 
 // Hive wraps results as { status: [ { status, response } ] }; docs samples sometimes show the inner object only.
 function hiveResponse(data: any): any {
@@ -49,8 +55,8 @@ function hiveResponse(data: any): any {
   return response;
 }
 
-async function callHive(apiKey: string, body: BodyInit, json: boolean): Promise<any> {
-  const res = await fetch(HIVE_SYNC_URL, {
+async function callHiveV2(apiKey: string, body: BodyInit, json: boolean): Promise<any> {
+  const res = await fetch(HIVE_V2_SYNC_URL, {
     method: 'POST',
     headers: {
       authorization: `token ${apiKey}`,
@@ -67,6 +73,23 @@ async function callHive(apiKey: string, body: BodyInit, json: boolean): Promise<
   return hiveResponse(await res.json());
 }
 
+async function callHiveV3Image(apiKey: string, buf: Buffer, mimeType: string): Promise<any> {
+  const res = await fetch(HIVE_V3_IMAGE_URL, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${apiKey}`, accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify({ input: [{ media_base64: `data:${mimeType};base64,${buf.toString('base64')}` }] }),
+    signal: AbortSignal.timeout(25000)
+  });
+  if (!res.ok) {
+    const detail = (await res.text().catch(() => '')).slice(0, 200);
+    throw new ProviderError(`Hive V3 HTTP ${res.status} ${detail}`);
+  }
+  const data = await res.json();
+  const output = data?.output ?? data?.response?.output ?? data?.status?.[0]?.response?.output;
+  if (!Array.isArray(output)) throw new ProviderError('Hive V3 response missing output');
+  return { output };
+}
+
 function pct(x: number): number {
   // Never display 0% or 100%: a classifier score is not certainty.
   return Math.min(99.9, Math.max(0.1, Math.round(x * 1000) / 10));
@@ -74,21 +97,22 @@ function pct(x: number): number {
 
 export function parseHiveImage(response: any, isFr: boolean): { score: number; signals: Signal[]; sourceConfident: boolean } {
   const classes: HiveClass[] = response?.output?.[0]?.classes ?? [];
-  const find = (name: string) => classes.find((c) => c.class === name)?.score;
+  const find = (name: string) => classScore(classes.find((c) => c.class === name));
   const ai = find('ai_generated');
   if (typeof ai !== 'number') throw new ProviderError('Hive image output missing ai_generated class');
 
   const signals: Signal[] = [{ label: isFr ? 'Détecteur visuel IA (classe ai_generated)' : 'AI-generated media classifier', value: pct(ai) }];
 
   const sources = classes
-    .filter((c) => c.class && typeof c.score === 'number' && !NON_SOURCE_CLASSES.has(c.class))
-    .sort((a, b) => (b.score as number) - (a.score as number));
+    .map((c) => ({ name: c.class, score: classScore(c) }))
+    .filter((c): c is { name: string; score: number } => !!c.name && typeof c.score === 'number' && !NON_SOURCE_CLASSES.has(c.name) && !c.name.includes('audio'))
+    .sort((a, b) => b.score - a.score);
   const top = sources[0];
-  const sourceConfident = !!top && (top.score as number) >= 0.5;
+  const sourceConfident = !!top && top.score >= 0.5;
   if (ai >= 0.5 && top && sourceConfident) {
     signals.push({
-      label: isFr ? `Générateur le plus proche : ${top.class}` : `Closest known generator: ${top.class}`,
-      value: pct(top.score as number)
+      label: isFr ? `Générateur le plus proche : ${top.name}` : `Closest known generator: ${top.name}`,
+      value: pct(top.score)
     });
   }
 
@@ -133,10 +157,10 @@ export async function analyzeWithHive(
   const requestId = 'req_' + crypto.randomBytes(6).toString('hex');
   const isFr = locale === 'fr';
 
-  const apiKey =
-    (modality === 'text' ? process.env.HIVE_TEXT_API_KEY : process.env.HIVE_IMAGE_API_KEY) || process.env.HIVE_API_KEY;
+  const v2Key = modality === 'text' ? process.env.HIVE_TEXT_API_KEY : process.env.HIVE_IMAGE_API_KEY;
+  const v3Key = modality === 'image' ? process.env.HIVE_API_KEY : undefined;
 
-  if (!apiKey) {
+  if (!v2Key && !v3Key) {
     if (process.env.NODE_ENV !== 'production' && process.env.HIVE_MOCK === '1') {
       return devMock(modality, payload, locale, requestId);
     }
@@ -145,14 +169,19 @@ export async function analyzeWithHive(
 
   if (modality === 'text') {
     const text = payload.text || '';
-    const response = await callHive(apiKey, JSON.stringify({ text_data: text }), true);
+    const response = await callHiveV2(v2Key!, JSON.stringify({ text_data: text }), true);
     const { score, signals, segmentSpread } = parseHiveText(response, isFr);
     return normalizeVerdict({ modality, score, signals, locale, requestId, latencyMs: Date.now() - startTime, textLength: text.length, segmentSpread });
   }
 
-  const form = new FormData();
-  form.append('media', new Blob([new Uint8Array(payload.fileBuffer!)], { type: payload.mimeType }), payload.fileName || 'upload');
-  const response = await callHive(apiKey, form, false);
+  let response: any;
+  if (v2Key) {
+    const form = new FormData();
+    form.append('media', new Blob([new Uint8Array(payload.fileBuffer!)], { type: payload.mimeType }), payload.fileName || 'upload');
+    response = await callHiveV2(v2Key, form, false);
+  } else {
+    response = await callHiveV3Image(v3Key!, payload.fileBuffer!, payload.mimeType || 'image/jpeg');
+  }
   const { score, signals } = parseHiveImage(response, isFr);
   return normalizeVerdict({ modality, score, signals, locale, requestId, latencyMs: Date.now() - startTime });
 }

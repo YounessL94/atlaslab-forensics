@@ -18,7 +18,8 @@ const MESSAGES = {
     tooBig: 'File exceeds the 4 MB limit.',
     badType: 'Unsupported file. Upload a JPG, PNG or WEBP image.',
     bad: 'Invalid request.',
-    unavailable: 'Analysis service temporarily unavailable. Please try again later.'
+    unavailable: 'Analysis service temporarily unavailable. Please try again later.',
+    textOff: 'The AI text detector is not available yet. The image detector and C2PA checker are available.'
   },
   fr: {
     rate: 'Trop d’analyses. Patientez un instant puis réessayez.',
@@ -31,7 +32,8 @@ const MESSAGES = {
     tooBig: 'Le fichier dépasse la limite de 4 Mo.',
     badType: 'Fichier non pris en charge. Importez une image JPG, PNG ou WEBP.',
     bad: 'Requête invalide.',
-    unavailable: 'Service d’analyse temporairement indisponible. Réessayez plus tard.'
+    unavailable: 'Service d’analyse temporairement indisponible. Réessayez plus tard.',
+    textOff: 'Le détecteur de texte IA n’est pas encore disponible. Le détecteur d’image et le vérificateur C2PA fonctionnent.'
   }
 };
 
@@ -66,6 +68,12 @@ export async function POST(req: NextRequest) {
     const modality = form.get('modality');
     if (modality !== 'image' && modality !== 'text') return json({ error: m.bad }, 400);
 
+    // Text detection needs a Hive V2 Enterprise project key; fail fast with an honest message.
+    if (modality === 'text' && !process.env.HIVE_TEXT_API_KEY && process.env.HIVE_MOCK !== '1') {
+      await incrementMetric('err_text_unavailable');
+      return json({ error: m.textOff }, 503);
+    }
+
     // Validate input before spending a Turnstile check or rate-limit slot.
     let text = '';
     let buffer: Buffer | null = null;
@@ -86,6 +94,7 @@ export async function POST(req: NextRequest) {
 
     const token = form.get('turnstileToken');
     if (!(await verifyTurnstileToken(typeof token === 'string' ? token : null, ip))) {
+      await incrementMetric('err_turnstile');
       return json({ error: m.captcha }, 403);
     }
 
@@ -93,11 +102,17 @@ export async function POST(req: NextRequest) {
       { name: 'scan_min', windowSec: 60, max: 5 },
       { name: 'scan_day', windowSec: 86400, max: Number(process.env.DAILY_IP_LIMIT || 40) }
     ]);
-    if (!perIp.allowed) return json({ error: perIp.rule === 'scan_day' ? m.daily : m.rate }, 429);
+    if (!perIp.allowed) {
+      await incrementMetric('err_rate_limited');
+      return json({ error: perIp.rule === 'scan_day' ? m.daily : m.rate }, 429);
+    }
     const global = await checkRateLimit('global', [
-      { name: 'scan_global_day', windowSec: 86400, max: Number(process.env.DAILY_GLOBAL_LIMIT || 3000) }
+      { name: 'scan_global_day', windowSec: 86400, max: Number(process.env.DAILY_GLOBAL_LIMIT || 90) }
     ]);
-    if (!global.allowed) return json({ error: m.busy }, 429);
+    if (!global.allowed) {
+      await incrementMetric('err_global_cap');
+      return json({ error: m.busy }, 429);
+    }
 
     if (modality === 'text') {
       const result = await analyzeWithHive('text', { text }, locale);
@@ -113,6 +128,8 @@ export async function POST(req: NextRequest) {
     if (err instanceof ConfigError) console.error('Config error:', err.message);
     else if (err instanceof ProviderError) console.error('Provider error:', err.message);
     else console.error('Analyze error:', (err as Error)?.message);
-    return json({ error: m.unavailable }, 503);
+    const providerBusy = err instanceof ProviderError && / 429 /.test(err.message);
+    await incrementMetric(err instanceof ConfigError ? 'err_config' : providerBusy ? 'err_provider_quota' : 'err_provider');
+    return json({ error: providerBusy ? m.busy : m.unavailable }, 503);
   }
 }

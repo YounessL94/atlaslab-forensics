@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getClientIp, hashIp, checkRateLimit, redisPipeline, ConfigError } from '@/lib/security';
+import { getClientIp, hashIp, checkRateLimit, redisPipeline, incrementMetric, ConfigError } from '@/lib/security';
 
 export const runtime = 'nodejs';
 
@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
       ['HSETNX', `waitlist:${type}:meta`, email, JSON.stringify({ locale, ts: new Date().toISOString() })]
     ]);
 
+    await incrementMetric(`lead_${type}`);
     return json({ success: true });
   } catch (err) {
     console.error(err instanceof ConfigError ? 'Config error:' : 'Lead error:', (err as Error)?.message);

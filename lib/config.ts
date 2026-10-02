@@ -1,5 +1,6 @@
 export const SITE_CONFIG = {
-  url: process.env.NEXT_PUBLIC_SITE_URL || 'https://forensics.atlaslab.io',
+  // Canonical origin. Switch NEXT_PUBLIC_SITE_URL to the custom domain only once it serves this site.
+  url: (process.env.NEXT_PUBLIC_SITE_URL || 'https://atlaslab-forensics.vercel.app').replace(/\/$/, ''),
   name: process.env.NEXT_PUBLIC_SITE_NAME || 'Atlas Forensics',
   contactEmail: process.env.NEXT_PUBLIC_CONTACT_EMAIL || 'contact@atlaslab.io',
   legalName: process.env.NEXT_PUBLIC_LEGAL_NAME || 'Atlas Lab Inc.',
